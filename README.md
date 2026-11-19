@@ -1,6 +1,6 @@
 Hello, welcome to my first-ever complete emulator. It includes five basic mappers from NROM, MMC1, UxROM, CNROM, MMC3, MMC5 which are mappers 0 to 5.
 
-The emulator takes about 2 days to complete and it already passed 147 per 147 tests of accuracycoin
+The emulator takes about 3.5 days to complete and it already passed 147 per 147 tests of accuracycoin
 
 Currently my emulator is made for Windows.
 
