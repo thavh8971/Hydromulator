@@ -15,8 +15,11 @@ typedef struct Mmc1Config {
     uint32_t       chr_size;
     bool           chr_is_ram;
     uint8_t       *prg_ram;
+    uint32_t       prg_ram_size;     /* 0, 8192, 16384, or 32768 */
     bool           prg_ram_present;
     uint8_t        initial_mirroring; /* 0=H, 1=V, 2=SingleLo, 3=SingleHi, 4=Four */
+    uint8_t        submapper;         /* 5=SEROM/SHROM fixed 32K, 7=hardwired mirroring */
+    bool           is_mmc1a;          /* Mapper 155 */
 } Mmc1Config;
 
 typedef struct Mmc1 {
@@ -26,7 +29,11 @@ typedef struct Mmc1 {
     uint32_t       chr_size;
     bool           chr_is_ram;
     uint8_t       *prg_ram;
+    uint32_t       prg_ram_size;
     bool           prg_ram_present;
+    uint8_t        submapper;
+    bool           is_mmc1a;
+    bool           is_snrom;
 
     uint8_t        initial_mirroring;
     uint8_t        mirroring;
@@ -39,10 +46,10 @@ typedef struct Mmc1 {
     uint64_t       last_write_cycle;
 } Mmc1;
 
-void    mmc1_power_on(Mmc1 *m, const Mmc1Config *cfg);
-void    mmc1_reset(Mmc1 *m);
-uint8_t mmc1_cpu_read(const Mmc1 *m, uint16_t addr, uint8_t open_bus, bool *driven_out);
-void    mmc1_cpu_write(Mmc1 *m, uint16_t addr, uint8_t val, uint64_t cpu_cycles);
+void     mmc1_power_on(Mmc1 *m, const Mmc1Config *cfg);
+void     mmc1_reset(Mmc1 *m);
+uint8_t  mmc1_cpu_read(const Mmc1 *m, uint16_t addr, uint8_t open_bus, bool *driven_out);
+void     mmc1_cpu_write(Mmc1 *m, uint16_t addr, uint8_t val, uint64_t cpu_cycles);
 uint32_t mmc1_map_chr(const Mmc1 *m, uint16_t addr);
 
 #ifdef __cplusplus

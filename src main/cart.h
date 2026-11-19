@@ -7,6 +7,7 @@
 #include "mmc5.h"
 #include "mapper6.h"
 #include "mapper28.h"
+#include "vrc6.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -34,7 +35,7 @@ typedef struct Cartridge {
     uint8_t   *chr_mem;
     uint32_t   chr_size;
     bool       chr_is_ram;
-    uint8_t    prg_ram[0x2000];
+    uint8_t    prg_ram[0x8000];
     bool       prg_ram_present;
     uint32_t   prg_ram_size;
     uint32_t   prg_nvram_size;
@@ -60,6 +61,7 @@ typedef struct Cartridge {
     Mmc5       mmc5;
     Mapper6    mapper6;
     Mapper28   mapper28;
+    Vrc6       vrc6;
 
     /* Runtime config flags */
     bool       mmc3_rev_a;

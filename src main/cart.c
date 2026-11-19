@@ -3,12 +3,20 @@
 #include <stdlib.h>
 #include <string.h>
 
+static inline bool cart_is_mmc1(const Cartridge *cart) {
+    return cart->mapper == 1u || cart->mapper == 155u;
+}
+
 static inline bool cart_is_mapper6(const Cartridge *cart) {
     return cart->mapper == 6u || cart->mapper == 8u;
 }
 
 static inline bool cart_is_mmc24(const Cartridge *cart) {
     return cart->mapper == 9u || cart->mapper == 10u;
+}
+
+static inline bool cart_is_vrc6(const Cartridge *cart) {
+    return cart->mapper == 24u || cart->mapper == 26u;
 }
 
 static uint16_t mirror_nametable_addr(MirrorMode mode, uint16_t addr) {
@@ -76,7 +84,7 @@ bool cart_load_ines(Cartridge *cart, const char *path) {
         fclose(fp);
         return false;
     }
-    if (mapper > 10u && mapper != 28u) {
+    if (mapper > 10u && mapper != 24u && mapper != 26u && mapper != 28u && mapper != 155u) {
         fprintf(stderr, "Mapper %u chua duoc ho tro.\n", (unsigned)mapper);
         fclose(fp);
         return false;
@@ -141,10 +149,12 @@ bool cart_load_ines(Cartridge *cart, const char *path) {
         cart->prg_nvram_size = nvram_shift ? (64u << nvram_shift) : 0u;
         uint32_t prg_ram_sz  = cart->prg_ram_size + cart->prg_nvram_size;
         cart->prg_ram_present = (mapper == 4u) ? ((prg_ram_sz > 0u) || (submapper == 1u))
-                              : (mapper == 7u || mapper == 9u || mapper == 10u || mapper == 28u) ? (prg_ram_sz > 0u)
-                                                                                                 : true;
+                              : (mapper == 1u || mapper == 155u || mapper == 7u ||
+                                 mapper == 9u || mapper == 10u || mapper == 24u ||
+                                 mapper == 26u || mapper == 28u) ? (prg_ram_sz > 0u)
+                                                                 : true;
     } else {
-        cart->prg_ram_size    = 0u;
+        cart->prg_ram_size    = ((mapper == 1u || mapper == 155u) && prg_size > 262144u) ? 32768u : 8192u;
         cart->prg_nvram_size  = 0u;
         cart->prg_ram_present = (mapper != 7u && mapper != 9u);
     }
@@ -188,7 +198,14 @@ void cart_power_on(Cartridge *cart, const CartBus *bus) {
     cart->mirroring   = cart->initial_mirroring;
 
     switch (cart->mapper) {
-        case 1: {
+        case 1:
+        case 155: {
+            uint32_t ram_sz = cart->is_nes2
+                ? (cart->prg_ram_size + cart->prg_nvram_size)
+                : cart->prg_ram_size;
+            if (ram_sz > sizeof(cart->prg_ram)) {
+                ram_sz = sizeof(cart->prg_ram);
+            }
             Mmc1Config cfg = {
                 .prg_rom           = cart->prg_rom,
                 .prg_size          = cart->prg_size,
@@ -196,8 +213,11 @@ void cart_power_on(Cartridge *cart, const CartBus *bus) {
                 .chr_size          = cart->chr_size,
                 .chr_is_ram        = cart->chr_is_ram,
                 .prg_ram           = cart->prg_ram,
-                .prg_ram_present   = cart->prg_ram_present,
+                .prg_ram_size      = ram_sz,
+                .prg_ram_present   = cart->prg_ram_present && (ram_sz > 0u),
                 .initial_mirroring = (uint8_t)cart->initial_mirroring,
+                .submapper         = cart->submapper,
+                .is_mmc1a          = (cart->mapper == 155u),
             };
             mmc1_power_on(&cart->mmc1, &cfg);
             break;
@@ -279,6 +299,25 @@ void cart_power_on(Cartridge *cart, const CartBus *bus) {
             mmc24_power_on(&cart->mmc24, &cfg);
             break;
         }
+        case 24:
+        case 26: {
+            Vrc6Config cfg = {
+                .prg_rom         = cart->prg_rom,
+                .prg_size        = cart->prg_size,
+                .chr_mem         = cart->chr_mem,
+                .chr_size        = cart->chr_size,
+                .chr_is_ram      = cart->chr_is_ram,
+                .prg_ram         = cart->prg_ram,
+                .prg_ram_present = cart->prg_ram_present,
+                .is_vrc6b        = (cart->mapper == 26u),
+            };
+            Vrc6Bus vbus = {
+                .ctx    = cart->bus.ctx,
+                .on_irq = cart->bus.on_irq,
+            };
+            vrc6_power_on(&cart->vrc6, &cfg, &vbus);
+            break;
+        }
         case 28: {
             Mapper28Config cfg = {
                 .prg_rom                 = cart->prg_rom,
@@ -306,15 +345,18 @@ void cart_reset(Cartridge *cart) {
     }
 
     switch (cart->mapper) {
-        case 1:  mmc1_reset(&cart->mmc1); break;
-        case 4:  mmc3_reset(&cart->mmc3); break;
-        case 5:  mmc5_reset(&cart->mmc5); break;
+        case 1:
+        case 155: mmc1_reset(&cart->mmc1); break;
+        case 4:   mmc3_reset(&cart->mmc3); break;
+        case 5:   mmc5_reset(&cart->mmc5); break;
         case 6:
-        case 8:  mapper6_reset(&cart->mapper6); break;
+        case 8:   mapper6_reset(&cart->mapper6); break;
         case 9:
-        case 10: mmc24_reset(&cart->mmc24); break;
-        case 28: mapper28_reset(&cart->mapper28); break;
-        default: break;
+        case 10:  mmc24_reset(&cart->mmc24); break;
+        case 24:
+        case 26:  vrc6_reset(&cart->vrc6); break;
+        case 28:  mapper28_reset(&cart->mapper28); break;
+        default:  break;
     }
 }
 
@@ -335,7 +377,7 @@ uint8_t cart_cpu_read(Cartridge *cart, uint16_t addr, uint8_t open_bus, bool *dr
     if (cart_is_mapper6(cart)) {
         return mapper6_cpu_read(&cart->mapper6, addr, open_bus, driven_out);
     }
-    if (cart->mapper == 1u) {
+    if (cart_is_mmc1(cart)) {
         return mmc1_cpu_read(&cart->mmc1, addr, open_bus, driven_out);
     }
     if (cart->mapper == 4u) {
@@ -343,6 +385,9 @@ uint8_t cart_cpu_read(Cartridge *cart, uint16_t addr, uint8_t open_bus, bool *dr
     }
     if (cart_is_mmc24(cart)) {
         return mmc24_cpu_read(&cart->mmc24, addr, open_bus, driven_out);
+    }
+    if (cart_is_vrc6(cart)) {
+        return vrc6_cpu_read(&cart->vrc6, addr, open_bus, driven_out);
     }
     if (cart->mapper == 28u) {
         return mapper28_cpu_read(&cart->mapper28, addr, open_bus, driven_out);
@@ -396,7 +441,7 @@ void cart_cpu_write(Cartridge *cart, uint16_t addr, uint8_t val, uint64_t cpu_cy
         mapper6_cpu_write(&cart->mapper6, addr, val);
         return;
     }
-    if (cart->mapper == 1u) {
+    if (cart_is_mmc1(cart)) {
         mmc1_cpu_write(&cart->mmc1, addr, val, cpu_cycles);
         return;
     }
@@ -406,6 +451,10 @@ void cart_cpu_write(Cartridge *cart, uint16_t addr, uint8_t val, uint64_t cpu_cy
     }
     if (cart_is_mmc24(cart)) {
         mmc24_cpu_write(&cart->mmc24, addr, val);
+        return;
+    }
+    if (cart_is_vrc6(cart)) {
+        vrc6_cpu_write(&cart->vrc6, addr, val);
         return;
     }
     if (cart->mapper == 28u) {
@@ -471,15 +520,18 @@ uint8_t cart_ppu_read(Cartridge *cart, uint16_t addr, bool ppu_pd_rb, bool is_du
         }
         return ciram[mirror_nametable_addr((MirrorMode)cart->mmc24.mirroring, addr)];
     }
+    if (cart_is_vrc6(cart)) {
+        return vrc6_ppu_read(&cart->vrc6, addr, ciram);
+    }
 
     if (addr < 0x2000u) {
-        if (cart->mapper == 1u)  return cart->chr_mem[mmc1_map_chr(&cart->mmc1, addr)];
+        if (cart_is_mmc1(cart))  return cart->chr_mem[mmc1_map_chr(&cart->mmc1, addr)];
         if (cart->mapper == 4u)  return cart->chr_mem[mmc3_map_chr(&cart->mmc3, addr)];
         if (cart->mapper == 28u) return cart->chr_mem[mapper28_map_chr(&cart->mapper28, addr)];
         return cart->chr_mem[cart_map_discrete_chr(cart, addr)];
     }
 
-    MirrorMode mir = (cart->mapper == 1u)  ? (MirrorMode)cart->mmc1.mirroring
+    MirrorMode mir = cart_is_mmc1(cart)    ? (MirrorMode)cart->mmc1.mirroring
                    : (cart->mapper == 4u)  ? (MirrorMode)cart->mmc3.mirroring
                    : (cart->mapper == 28u) ? (MirrorMode)mapper28_mirror_mode(&cart->mapper28)
                                            : cart->mirroring;
@@ -505,10 +557,14 @@ void cart_ppu_write(Cartridge *cart, uint16_t addr, uint8_t val, uint8_t *ciram)
         }
         return;
     }
+    if (cart_is_vrc6(cart)) {
+        vrc6_ppu_write(&cart->vrc6, addr, val, ciram);
+        return;
+    }
 
     if (addr < 0x2000u) {
         if (cart->chr_is_ram) {
-            if (cart->mapper == 1u)       cart->chr_mem[mmc1_map_chr(&cart->mmc1, addr)] = val;
+            if (cart_is_mmc1(cart))       cart->chr_mem[mmc1_map_chr(&cart->mmc1, addr)] = val;
             else if (cart->mapper == 4u)  cart->chr_mem[mmc3_map_chr(&cart->mmc3, addr)] = val;
             else if (cart->mapper == 28u) cart->chr_mem[mapper28_map_chr(&cart->mapper28, addr)] = val;
             else                          cart->chr_mem[cart_map_discrete_chr(cart, addr)] = val;
@@ -516,7 +572,7 @@ void cart_ppu_write(Cartridge *cart, uint16_t addr, uint8_t val, uint8_t *ciram)
         return;
     }
 
-    MirrorMode mir = (cart->mapper == 1u)  ? (MirrorMode)cart->mmc1.mirroring
+    MirrorMode mir = cart_is_mmc1(cart)    ? (MirrorMode)cart->mmc1.mirroring
                    : (cart->mapper == 4u)  ? (MirrorMode)cart->mmc3.mirroring
                    : (cart->mapper == 28u) ? (MirrorMode)mapper28_mirror_mode(&cart->mapper28)
                                            : cart->mirroring;
@@ -528,6 +584,8 @@ void cart_cpu_cycle(Cartridge *cart) {
         mmc5_cpu_cycle_start(&cart->mmc5);
     } else if (cart_is_mapper6(cart)) {
         mapper6_cpu_cycle(&cart->mapper6);
+    } else if (cart_is_vrc6(cart)) {
+        vrc6_cpu_cycle(&cart->vrc6);
     }
 }
 
@@ -563,6 +621,9 @@ float cart_audio_output(const Cartridge *cart) {
     if (cart->mapper == 5u) {
         return mmc5_audio_output(&cart->mmc5);
     }
+    if (cart_is_vrc6(cart)) {
+        return vrc6_audio_output(&cart->vrc6);
+    }
     return 0.0f;
 }
 
@@ -570,7 +631,22 @@ void cart_format_tag(const Cartridge *cart, char *out, size_t cap) {
     if (cap == 0u) return;
     out[0] = '\0';
 
-    if (cart->mapper == 4u) {
+    if (cart_is_mmc1(cart)) {
+        uint32_t ram_sz = cart->is_nes2
+            ? (cart->prg_ram_size + cart->prg_nvram_size)
+            : cart->prg_ram_size;
+        bool is_snrom = (cart->mapper == 1u) &&
+                        (cart->prg_size <= 262144u) &&
+                        (cart->chr_size <= 8192u) &&
+                        (ram_sz == 8192u);
+        const char *tag = (cart->mapper == 155u)     ? "MMC1A"
+                        : (ram_sz >= 32768u)         ? "SXROM"
+                        : (ram_sz >= 16384u)         ? "SOROM"
+                        : (cart->prg_size > 262144u) ? "SUROM"
+                        : is_snrom                   ? "SNROM"
+                                                     : "MMC1";
+        snprintf(out, cap, "%s", tag);
+    } else if (cart->mapper == 4u) {
         const char *tag = cart->mmc3_is_mmc6 ? "MMC6"
                         : cart->mmc3_mc_acc  ? "MC-ACC"
                         : cart->mmc3_rev_a   ? "MMC3A"
@@ -592,6 +668,10 @@ void cart_format_tag(const Cartridge *cart, char *out, size_t cap) {
         snprintf(out, cap, "MMC2");
     } else if (cart->mapper == 10u) {
         snprintf(out, cap, "MMC4");
+    } else if (cart->mapper == 24u) {
+        snprintf(out, cap, "VRC6a");
+    } else if (cart->mapper == 26u) {
+        snprintf(out, cap, "VRC6b");
     } else if (cart->mapper == 28u) {
         snprintf(out, cap, "Action 53");
     }
