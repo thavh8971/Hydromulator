@@ -8,4 +8,14 @@ Although I use AI to make it, it was a free AI and I wasn't careless or being la
 
 
 When I prompt agent to make this, I know what I am implementing and understand its most basic. Otherwise I can never inference out probable problem zones and definitely no 147/147 AccuracyCoin
+
+
 <img width="276" height="291" alt="{2334848B-9A31-4FA5-B5D1-41FAC49D27BB}" src="https://github.com/user-attachments/assets/cba25120-fced-4435-8a83-07e6a6a9e41e" />
+
+
+Basic controls:
+A = Z or J
+B = X or K
+Select is Shift or Backspace
+Start = Enter
+ULDR = WASD or arrow keys
