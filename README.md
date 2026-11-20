@@ -6,4 +6,6 @@ Currently my emulator is made for Windows.
 
 Although I use AI to make it, it was a free AI and I wasn't careless or being lazy about it. I actively work whenever I have time, right after I have done my homework, with discipline. I also have some part that is skeptical when the score gets too high, well above the MesenCE emulator. So I force Gemini 4 hydrogen to reveal its own error and cheating. Well it was hard to make it and there are some parts that I think still have errors. Like the MMC3, often it passed the test for it but in the Super Mario Bros. 3 game, it has some artifacts and graphic flaws. It may be correct or not so let me know.
 
+
+When I prompt agent to make this, I know what I am implementing and understand its most basic. Otherwise I can never inference out probable problem zones and definitely no 147/147 AccuracyCoin
 <img width="276" height="291" alt="{2334848B-9A31-4FA5-B5D1-41FAC49D27BB}" src="https://github.com/user-attachments/assets/cba25120-fced-4435-8a83-07e6a6a9e41e" />
